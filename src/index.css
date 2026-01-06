@@ -1,0 +1,56 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap");
+
+@import "tailwindcss";
+
+@font-face {
+  font-family: "quotex";
+  src: url("./assets/fonts/quotex.otf") format("opentype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.ticker {
+  font-family: "quotex", sans-serif !important;
+  font-weight: normal !important;
+}
+
+.nickname-wrapper {
+  --nickname-color: transparent;
+  --nickname-gradient: linear-gradient(
+    90deg,
+    #9b4dca 0%,
+    #d8a0ff 50%,
+    #9b4dca 100%
+  );
+}
+
+.nickname-wrapper.hovered {
+  --nickname-gradient: var(--hover-gradient);
+}
+
+.nickname-wrapper.copied {
+  --nickname-color: #d8a0ff;
+  --nickname-gradient: none;
+}
+
+.nickname-wrapper .ticker,
+.nickname-wrapper .ticker * {
+  background: var(--nickname-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.nickname-wrapper.copied .ticker,
+.nickname-wrapper.copied .ticker * {
+  -webkit-text-fill-color: #d8a0ff !important;
+  background: none !important;
+}
+
+.base-statement {
+  font-family: "Cormorant Garamond", serif;
+  font-weight: 300;
+  font-style: italic;
+}
