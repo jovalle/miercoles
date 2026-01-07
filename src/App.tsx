@@ -7,7 +7,7 @@ const BAR_COUNT = 32;
 const FFT_SIZE = 512;
 const MIN_FREQ = 60;
 const MAX_FREQ = 14000;
-const SMOOTHING = 0.4;
+const SMOOTHING = 0.6;
 const STORAGE_KEY = "miercoles-audio-paused";
 const HOLD_DURATION = 600;
 
@@ -87,9 +87,10 @@ function App() {
       }
 
       const avg = count > 0 ? sum / count / 255 : 0;
-      // Apply slight boost to lower frequencies for visual balance
-      const boost = 1 + ((BAR_COUNT - i) / BAR_COUNT) * 0.3;
-      newBars.push(Math.min(1, avg * boost));
+      // Apply compression to tame bass and lift mids/highs for better nuance
+      const bassAttenuation = 0.7 + (i / BAR_COUNT) * 0.3; // 0.7 for bass, 1.0 for highs
+      const compressed = Math.pow(avg, 0.8); // Compress dynamic range slightly
+      newBars.push(Math.min(1, compressed * bassAttenuation));
     }
 
     setBars(newBars);
@@ -102,8 +103,8 @@ function App() {
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = FFT_SIZE;
     analyser.smoothingTimeConstant = SMOOTHING;
-    analyser.minDecibels = -90;
-    analyser.maxDecibels = -10;
+    analyser.minDecibels = -80;
+    analyser.maxDecibels = -20;
     const source = audioContext.createMediaElementSource(audioRef.current);
     source.connect(analyser);
     analyser.connect(audioContext.destination);
@@ -140,41 +141,37 @@ function App() {
     };
   }, [updateBars]);
 
-  // Auto-play on first user interaction if not previously paused
-  const tryAutoPlay = useCallback(async () => {
+  // Attempt autoplay on initial page load
+  useEffect(() => {
     if (hasAutoPlayedRef.current) return;
     hasAutoPlayedRef.current = true;
 
     const wasPaused = localStorage.getItem(STORAGE_KEY) === "true";
     if (wasPaused || !audioRef.current) return;
 
-    try {
-      initAudioContext();
-      if (audioContextRef.current?.state === "suspended") {
-        await audioContextRef.current.resume();
-      }
-      if (audioRef.current.readyState < 2) {
-        audioRef.current.load();
-        await new Promise<void>((resolve, reject) => {
-          const audio = audioRef.current!;
-          const onCanPlay = () => {
-            audio.removeEventListener("canplay", onCanPlay);
-            audio.removeEventListener("error", onError);
-            resolve();
-          };
-          const onError = () => {
-            audio.removeEventListener("canplay", onCanPlay);
-            audio.removeEventListener("error", onError);
-            reject(new Error("Failed to load audio"));
-          };
-          audio.addEventListener("canplay", onCanPlay);
-          audio.addEventListener("error", onError);
-        });
-      }
-      await audioRef.current.play();
-    } catch (err) {
-      console.error("Auto-play failed:", err);
+    // Initialize audio context
+    initAudioContext();
+
+    // Resume audio context if suspended
+    if (audioContextRef.current?.state === "suspended") {
+      audioContextRef.current.resume();
     }
+
+    // Attempt to play on load
+    const audio = audioRef.current;
+    if (audio.readyState >= 2) {
+      audio.play().catch((err) => console.error("Auto-play failed:", err));
+    } else {
+      // If not ready, load and play when ready
+      audio.load();
+      const onCanPlay = () => {
+        audio.removeEventListener("canplay", onCanPlay);
+        audio.play().catch((err) => console.error("Auto-play failed:", err));
+      };
+      audio.addEventListener("canplay", onCanPlay);
+    }
+
+    return () => {};
   }, [initAudioContext]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -205,7 +202,6 @@ function App() {
   };
 
   const generateNew = () => {
-    tryAutoPlay();
     indexRef.current++;
     if (indexRef.current >= shuffledRef.current.length) {
       const lastNickname = shuffledRef.current[shuffledRef.current.length - 1];
@@ -342,12 +338,9 @@ function App() {
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          className={`nickname-wrapper text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-normal transition-all duration-200 decoration-2 underline-offset-8 max-w-full break-words ${isHovered ? "hovered" : ""} ${copied ? "copied" : ""}`}
+          className={`nickname-wrapper text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-normal transition-all duration-200 max-w-full break-words ${isHovered ? "hovered" : ""} ${copied ? "copied" : ""}`}
           style={
             {
-              textDecorationLine: isHovered && !copied ? "underline" : "none",
-              textDecorationStyle: "solid",
-              textDecorationColor: "#6B5B8C",
               "--hover-gradient": `radial-gradient(circle at ${mousePos.percent}% 50%,
               #F0E6FF 0%,
               #D8A0FF 15%,
@@ -437,7 +430,13 @@ function App() {
                     y1={y1}
                     x2={x2}
                     y2={y2}
-                    stroke={`hsl(${270 + (i / BAR_COUNT) * 60}, 70%, ${50 + height * 30}%)`}
+                    stroke={(() => {
+                      const freqRatio = i / (BAR_COUNT - 1);
+                      const saturation = 15 + freqRatio * 75; // 15% (dark) to 90% (purple)
+                      const lightness =
+                        6 + freqRatio * 12 + height * (15 + freqRatio * 35);
+                      return `hsl(265, ${saturation}%, ${lightness}%)`;
+                    })()}
                     strokeWidth={8}
                     strokeLinecap="round"
                   />
@@ -482,10 +481,15 @@ function App() {
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerCancel}
               onPointerLeave={handlePointerCancel}
+              onContextMenu={(e) => e.preventDefault()}
               className="relative z-10 w-40 h-40 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
               style={{
                 backgroundColor: isPlaying ? "#5E2D79" : "#2D1B4E",
                 border: "2px solid #6B5B8C",
+                touchAction: "none",
+                WebkitTouchCallout: "none",
+                WebkitUserSelect: "none",
+                userSelect: "none",
               }}
               aria-label={isPlaying ? "Pause music" : "Play music"}
             >
@@ -529,7 +533,13 @@ function App() {
                   y1={y1}
                   x2={x2}
                   y2={y2}
-                  stroke={`hsl(${270 + (i / BAR_COUNT) * 60}, 70%, ${50 + height * 30}%)`}
+                  stroke={(() => {
+                    const freqRatio = i / (BAR_COUNT - 1);
+                    const saturation = 15 + freqRatio * 75; // 15% (dark) to 90% (purple)
+                    const lightness =
+                      6 + freqRatio * 12 + height * (15 + freqRatio * 35);
+                    return `hsl(265, ${saturation}%, ${lightness}%)`;
+                  })()}
                   strokeWidth={2.5}
                   strokeLinecap="round"
                 />
@@ -572,10 +582,15 @@ function App() {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
             onPointerLeave={handlePointerCancel}
+            onContextMenu={(e) => e.preventDefault()}
             className="music-button relative z-10 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 touch-manipulation"
             style={{
               backgroundColor: isPlaying ? "#5E2D79" : "#2D1B4E",
               border: "1px solid #6B5B8C",
+              touchAction: "none",
+              WebkitTouchCallout: "none",
+              WebkitUserSelect: "none",
+              userSelect: "none",
             }}
             aria-label={isPlaying ? "Pause music" : "Play music"}
           >
