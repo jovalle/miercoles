@@ -1,5 +1,6 @@
 # Dependencies
 .planning/
+.serena/
 node_modules/
 
 # Build output
