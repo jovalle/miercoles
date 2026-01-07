@@ -13,16 +13,132 @@
 .ticker {
   font-family: "quotex", sans-serif !important;
   font-weight: normal !important;
+  display: inline;
 }
 
 .nickname-wrapper {
   --nickname-color: transparent;
-  --nickname-gradient: linear-gradient(
-    90deg,
-    #9b4dca 0%,
-    #d8a0ff 50%,
-    #9b4dca 100%
+  --nickname-gradient: radial-gradient(
+    ellipse at 50% 50%,
+    #f0e6ff 0%,
+    #d8a0ff 25%,
+    #9b4dca 60%,
+    #5e2d79 100%
   );
+  max-width: 85vw;
+  text-align: center;
+}
+
+.nickname-words {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: start;
+  gap: 0;
+  min-height: 2.6em;
+}
+
+.nickname-word {
+  display: inline-flex;
+  white-space: nowrap;
+}
+
+.nickname-space {
+  display: inline;
+}
+
+.music-button-wrapper {
+  width: 100px;
+  height: 100px;
+}
+
+.music-button {
+  width: 40px;
+  height: 40px;
+}
+
+.visualizer-svg {
+  width: 100px;
+  height: 100px;
+}
+
+.hold-progress-svg {
+  width: 52px;
+  height: 52px;
+}
+
+.music-icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (min-width: 640px) {
+  .music-button-wrapper {
+    width: 120px;
+    height: 120px;
+  }
+  .music-button {
+    width: 48px;
+    height: 48px;
+  }
+  .visualizer-svg {
+    width: 120px;
+    height: 120px;
+  }
+  .hold-progress-svg {
+    width: 62px;
+    height: 62px;
+  }
+  .music-icon {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (min-width: 768px) {
+  .music-button-wrapper {
+    width: 140px;
+    height: 140px;
+  }
+  .music-button {
+    width: 56px;
+    height: 56px;
+  }
+  .visualizer-svg {
+    width: 140px;
+    height: 140px;
+  }
+  .hold-progress-svg {
+    width: 72px;
+    height: 72px;
+  }
+  .music-icon {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .music-button-wrapper {
+    width: 160px;
+    height: 160px;
+  }
+  .music-button {
+    width: 64px;
+    height: 64px;
+  }
+  .visualizer-svg {
+    width: 160px;
+    height: 160px;
+  }
+  .hold-progress-svg {
+    width: 82px;
+    height: 82px;
+  }
+  .music-icon {
+    width: 28px;
+    height: 28px;
+  }
 }
 
 .nickname-wrapper.hovered {
