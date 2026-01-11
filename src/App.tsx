@@ -9,7 +9,9 @@ const MIN_FREQ = 60;
 const MAX_FREQ = 14000;
 const SMOOTHING = 0.6;
 const STORAGE_KEY = "miercoles-audio-paused";
+const HOLD_DELAY = 200;
 const HOLD_DURATION = 600;
+const FADE_DURATION = 1000;
 
 function shuffle<T>(array: T[], exclude?: T): T[] {
   const result = [...array];
@@ -36,7 +38,7 @@ function App() {
   const [bars, setBars] = useState<number[]>(new Array(BAR_COUNT).fill(0));
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [holdProgress, setHoldProgress] = useState(0);
-  const hasAutoPlayedRef = useRef(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const holdStartRef = useRef<number | null>(null);
   const holdAnimationRef = useRef<number | null>(null);
   const didTriggerHoldRef = useRef(false);
@@ -141,38 +143,52 @@ function App() {
     };
   }, [updateBars]);
 
-  // Attempt autoplay on initial page load
-  useEffect(() => {
-    if (hasAutoPlayedRef.current) return;
-    hasAutoPlayedRef.current = true;
+  // Fade in audio volume
+  const fadeInAudio = useCallback((audio: HTMLAudioElement) => {
+    audio.volume = 0;
+    const startTime = Date.now();
+    const fadeStep = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(1, elapsed / FADE_DURATION);
+      audio.volume = progress;
+      if (progress < 1) {
+        requestAnimationFrame(fadeStep);
+      }
+    };
+    requestAnimationFrame(fadeStep);
+  }, []);
 
+  // Handle the initial "tap to begin" interaction
+  const handleStart = useCallback(async () => {
+    if (hasStarted) return;
+    setHasStarted(true);
+
+    // Check if user previously paused
     const wasPaused = localStorage.getItem(STORAGE_KEY) === "true";
     if (wasPaused || !audioRef.current) return;
 
-    // Initialize audio context
-    initAudioContext();
-
-    // Resume audio context if suspended
-    if (audioContextRef.current?.state === "suspended") {
-      audioContextRef.current.resume();
+    try {
+      initAudioContext();
+      if (audioContextRef.current?.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+      const audio = audioRef.current;
+      if (audio.readyState < 2) {
+        audio.load();
+        await new Promise<void>((resolve) => {
+          const onCanPlay = () => {
+            audio.removeEventListener("canplay", onCanPlay);
+            resolve();
+          };
+          audio.addEventListener("canplay", onCanPlay);
+        });
+      }
+      fadeInAudio(audio);
+      await audio.play();
+    } catch (err) {
+      console.error("Audio playback failed:", err);
     }
-
-    // Attempt to play on load
-    const audio = audioRef.current;
-    if (audio.readyState >= 2) {
-      audio.play().catch((err) => console.error("Auto-play failed:", err));
-    } else {
-      // If not ready, load and play when ready
-      audio.load();
-      const onCanPlay = () => {
-        audio.removeEventListener("canplay", onCanPlay);
-        audio.play().catch((err) => console.error("Auto-play failed:", err));
-      };
-      audio.addEventListener("canplay", onCanPlay);
-    }
-
-    return () => {};
-  }, [initAudioContext]);
+  }, [hasStarted, initAudioContext, fadeInAudio]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!nicknameRef.current) return;
@@ -265,7 +281,10 @@ function App() {
   const updateHoldProgress = useCallback(() => {
     if (holdStartRef.current === null) return;
     const elapsed = Date.now() - holdStartRef.current;
-    const progress = Math.min(1, elapsed / HOLD_DURATION);
+
+    // Only show progress after the delay
+    const progressElapsed = Math.max(0, elapsed - HOLD_DELAY);
+    const progress = Math.min(1, progressElapsed / HOLD_DURATION);
     setHoldProgress(progress);
 
     if (progress >= 1) {
@@ -312,91 +331,119 @@ function App() {
 
   return (
     <div
-      onClick={generateNew}
-      className="min-h-screen flex flex-col items-center justify-center p-6 sm:p-8 cursor-pointer select-none transition-colors"
+      onClick={hasStarted ? generateNew : handleStart}
+      className="min-h-screen flex flex-col items-center p-6 sm:p-8 cursor-pointer select-none transition-colors"
       style={{ backgroundColor: "#0D0A14" }}
     >
-      <div
-        className="text-center grid"
-        style={{ gridTemplateRows: "auto 1fr" }}
-      >
-        <p
-          className="base-statement text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-wide mb-4"
-          style={{ color: "#8B7FA8" }}
-        >
-          Hi my little
-        </p>
-        <div
-          ref={nicknameRef}
-          onClick={copyToClipboard}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => {
-            setIsHovered(false);
-            setMousePos({ x: 0, percent: 0 });
-          }}
-          onMouseMove={handleMouseMove}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          className={`nickname-wrapper text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-normal transition-all duration-200 max-w-full break-words ${isHovered ? "hovered" : ""} ${copied ? "copied" : ""}`}
-          style={
-            {
-              "--hover-gradient": `radial-gradient(circle at ${mousePos.percent}% 50%,
-              #F0E6FF 0%,
-              #D8A0FF 15%,
-              #9B4DCA 35%,
-              #5E2D79 55%,
-              #2D1B4E 80%)`,
-            } as React.CSSProperties
-          }
-        >
-          <span className="nickname-words">
-            {(() => {
-              const words = nickname.split(" ");
-              const maxWords = 4; // Support up to 4 words
-              return Array.from({ length: maxWords }, (_, idx) => (
-                <span
-                  key={idx}
-                  className="nickname-word"
-                  style={{
-                    display: idx < words.length ? "inline-flex" : "none",
-                  }}
-                >
-                  <Ticker
-                    value={words[idx] || ""}
-                    duration={800}
-                    easing="easeOutCubic"
-                    characterLists={[Presets.ALPHABET + "áéíóúñü"]}
-                  />
-                  {idx < words.length - 1 && (
-                    <span className="nickname-space">&nbsp;</span>
-                  )}
-                </span>
-              ));
-            })()}
-          </span>
-        </div>
-      </div>
-      <p
-        className={`mt-8 text-sm transition-opacity duration-300 ${
-          copied ? "opacity-100" : "opacity-0"
-        }`}
-        style={{ color: "#9A8CB8" }}
-      >
-        Copied to clipboard
-      </p>
-      <p
-        className="fixed bottom-6 text-xs text-center px-4"
-        style={{ color: "#3A2F52" }}
-      >
-        tap to summon another, cara mia — tap the name to claim it
-      </p>
+      {/* Audio element - always mounted */}
       <audio
         ref={audioRef}
         src={import.meta.env.BASE_URL + "lady-gaga.mp3"}
         loop
         preload="metadata"
       />
+
+      {/* Intro screen */}
+      <div
+        className="absolute inset-0 flex items-center justify-center transition-opacity duration-1000"
+        style={{
+          opacity: hasStarted ? 0 : 1,
+          pointerEvents: hasStarted ? "none" : "auto",
+        }}
+      >
+        <p
+          className="text-2xl sm:text-3xl md:text-4xl tracking-wide animate-pulse"
+          style={{ color: "#8B7FA8" }}
+        >
+          tap anywhere to begin
+        </p>
+      </div>
+
+      {/* Main content */}
+      <div
+        className="flex-1 flex flex-col items-center justify-center w-full transition-opacity duration-1000"
+        style={{
+          opacity: hasStarted ? 1 : 0,
+          pointerEvents: hasStarted ? "auto" : "none",
+        }}
+      >
+        <div className="text-center">
+          <p
+            className="base-statement text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-wide mb-4"
+            style={{ color: "#8B7FA8" }}
+          >
+            Hi my little
+          </p>
+          <div
+            ref={nicknameRef}
+            onClick={copyToClipboard}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => {
+              setIsHovered(false);
+              setMousePos({ x: 0, percent: 0 });
+            }}
+            onMouseMove={handleMouseMove}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            className={`nickname-wrapper text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-normal transition-all duration-200 max-w-full break-words ${isHovered ? "hovered" : ""} ${copied ? "copied" : ""}`}
+            style={
+              {
+                "--hover-gradient": `radial-gradient(circle at ${mousePos.percent}% 50%,
+                  #F0E6FF 0%,
+                  #D8A0FF 15%,
+                  #9B4DCA 35%,
+                  #5E2D79 55%,
+                  #2D1B4E 80%)`,
+              } as React.CSSProperties
+            }
+          >
+            <span className="nickname-words">
+              {(() => {
+                const words = nickname.split(" ");
+                const maxWords = 4;
+                return Array.from({ length: maxWords }, (_, idx) => (
+                  <span
+                    key={idx}
+                    className="nickname-word"
+                    style={{
+                      display: idx < words.length ? "inline-flex" : "none",
+                    }}
+                  >
+                    <Ticker
+                      value={words[idx] || ""}
+                      duration={800}
+                      easing="easeOutCubic"
+                      characterLists={[Presets.ALPHABET + "áéíóúñü"]}
+                    />
+                    {idx < words.length - 1 && (
+                      <span className="nickname-space">&nbsp;</span>
+                    )}
+                  </span>
+                ));
+              })()}
+            </span>
+          </div>
+        </div>
+        <p
+          className={`mt-8 text-sm transition-opacity duration-300 ${
+            copied ? "opacity-100" : "opacity-0"
+          }`}
+          style={{ color: "#9A8CB8" }}
+        >
+          Copied to clipboard
+        </p>
+      </div>
+      <p
+        className="pb-6 text-xs text-center px-4 transition-opacity duration-1000"
+        style={{
+          color: "#3A2F52",
+          opacity: hasStarted ? 1 : 0,
+        }}
+      >
+        tap to summon another, cara mia — tap the name to claim it
+      </p>
+
       {isFullscreen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
@@ -507,7 +554,14 @@ function App() {
           </div>
         </div>
       )}
-      <div className="fixed top-10 right-10 md:top-12 md:right-12">
+
+      <div
+        className="fixed top-10 right-10 md:top-12 md:right-12 transition-opacity duration-1000"
+        style={{
+          opacity: hasStarted ? 1 : 0,
+          pointerEvents: hasStarted ? "auto" : "none",
+        }}
+      >
         <div className="relative flex items-center justify-center music-button-wrapper">
           <svg
             className="absolute visualizer-svg"
