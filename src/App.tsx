@@ -8,7 +8,7 @@ const FFT_SIZE = 512;
 const MIN_FREQ = 60;
 const MAX_FREQ = 14000;
 const SMOOTHING = 0.6;
-const STORAGE_KEY = "miercoles-audio-paused";
+const NICKNAME_STORAGE_KEY = "miercoles-nickname";
 const HOLD_DELAY = 200;
 const HOLD_DURATION = 600;
 const FADE_DURATION = 1000;
@@ -30,7 +30,15 @@ function shuffle<T>(array: T[], exclude?: T): T[] {
 function App() {
   const shuffledRef = useRef<string[]>(shuffle(nicknames));
   const indexRef = useRef(0);
-  const [nickname, setNickname] = useState(() => shuffledRef.current[0]);
+  const [nickname, setNickname] = useState(() => {
+    const saved = localStorage.getItem(NICKNAME_STORAGE_KEY);
+    if (saved && nicknames.includes(saved)) {
+      return saved;
+    }
+    const initial = shuffledRef.current[0];
+    localStorage.setItem(NICKNAME_STORAGE_KEY, initial);
+    return initial;
+  });
   const [copied, setCopied] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, percent: 0 });
@@ -120,7 +128,6 @@ function App() {
     if (!audio) return;
     const handlePause = () => {
       setIsPlaying(false);
-      localStorage.setItem(STORAGE_KEY, "true");
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
@@ -129,7 +136,6 @@ function App() {
     };
     const handlePlay = () => {
       setIsPlaying(true);
-      localStorage.removeItem(STORAGE_KEY);
       updateBars();
     };
     audio.addEventListener("pause", handlePause);
@@ -163,9 +169,7 @@ function App() {
     if (hasStarted) return;
     setHasStarted(true);
 
-    // Check if user previously paused
-    const wasPaused = localStorage.getItem(STORAGE_KEY) === "true";
-    if (wasPaused || !audioRef.current) return;
+    if (!audioRef.current) return;
 
     try {
       initAudioContext();
@@ -224,7 +228,9 @@ function App() {
       shuffledRef.current = shuffle(nicknames, lastNickname);
       indexRef.current = 0;
     }
-    setNickname(shuffledRef.current[indexRef.current]);
+    const newNickname = shuffledRef.current[indexRef.current];
+    localStorage.setItem(NICKNAME_STORAGE_KEY, newNickname);
+    setNickname(newNickname);
   };
 
   const copyToClipboard = (e: React.MouseEvent) => {
