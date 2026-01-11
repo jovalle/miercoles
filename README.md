@@ -46,6 +46,12 @@ bun run preview
 - [ ] Sorting Hat Quiz to find your perfect nickname
 - [ ] Share functionality for social media
 
+## Acknowledgments
+
+- **My domestic partner** - For her invaluable feedback throughout development, especially the perfect song choice that brings the whole experience together
+- **[smart-ticker](https://github.com/tombcato/smart-ticker)** by tombcato - The beautiful text animation library that powers the nickname transitions
+- **[Claude Code](https://github.com/anthropics/claude-code)** - Audio visualizer and smart-ticker tuning and enhancements made trivial
+
 ## Copyright & Attribution
 
 This project includes content that belongs to their respective copyright holders:
