@@ -57,4 +57,9 @@ export const nicknames: string[] = [
   "spectre",
   "succubus",
   "wraith",
+
+  // Fallout / Post-Apocalyptic
+  "apocalypse",
+  "deathclaw",
+  "sugar bomb",
 ];
