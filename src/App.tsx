@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  Fragment,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+} from "react";
 import { Ticker, Presets } from "@tombcato/smart-ticker";
 import "@tombcato/smart-ticker/style.css";
 import { nicknames } from "./data/nicknames";
@@ -51,11 +58,193 @@ function App() {
   const holdAnimationRef = useRef<number | null>(null);
   const didTriggerHoldRef = useRef(false);
   const nicknameRef = useRef<HTMLDivElement>(null);
+  const headlineContentRef = useRef<HTMLDivElement>(null);
+  const nicknameMeasureRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const animationRef = useRef<number | null>(null);
+
+  const nicknameWords = nickname.split(" ");
+  const [nicknameLayout, setNicknameLayout] = useState({
+    fontSize: 64,
+    lineByWord: [0],
+    lineFontSizes: [64],
+  });
+
+  const fitNickname = useCallback(() => {
+    const content = headlineContentRef.current;
+    const measure = nicknameMeasureRef.current;
+    if (!content || !measure) return;
+
+    const measureWords = Array.from(
+      measure.querySelectorAll<HTMLElement>(".nickname-measure-word")
+    );
+    const measuredWidth = measure.getBoundingClientRect().width;
+    if (measuredWidth <= 0 || measureWords.length === 0) return;
+
+    const measurementFontSize = Number.parseFloat(
+      window.getComputedStyle(measure).fontSize
+    );
+    const measurementGap = Number.parseFloat(
+      window.getComputedStyle(measure).columnGap
+    );
+    const availableWidth = content.clientWidth * 0.98;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const maxFontSize = Math.min(
+      112,
+      Math.max(72, Math.min(viewportWidth * 0.24, viewportHeight * 0.28))
+    );
+    const wordWidths = measureWords.map(
+      (word) => word.getBoundingClientRect().width
+    );
+    const lineGap = Math.min(12, Math.max(4, viewportHeight * 0.01));
+    const maximumNicknameHeight = Math.max(110, viewportHeight * 0.44);
+
+    type Candidate = {
+      lines: number[][];
+      fontSizes: number[];
+      minimumFontSize: number;
+      minimumUtilization: number;
+      score: number;
+    };
+
+    const candidates: Candidate[] = [];
+    const partitionCount = 1 << (measureWords.length - 1);
+
+    for (let mask = 0; mask < partitionCount; mask++) {
+      const lines: number[][] = [[]];
+      for (let wordIndex = 0; wordIndex < measureWords.length; wordIndex++) {
+        lines[lines.length - 1].push(wordIndex);
+        if (
+          wordIndex < measureWords.length - 1 &&
+          (mask & (1 << wordIndex)) !== 0
+        ) {
+          lines.push([]);
+        }
+      }
+
+      const widthRatios = lines.map((line) => {
+        const wordsWidth = line.reduce(
+          (total, wordIndex) => total + wordWidths[wordIndex],
+          0
+        );
+        const gapsWidth = measurementGap * Math.max(0, line.length - 1);
+        return (wordsWidth + gapsWidth) / measurementFontSize;
+      });
+      const idealFontSizes = widthRatios.map((widthRatio) =>
+        Math.min(maxFontSize, availableWidth / widthRatio)
+      );
+      const smallestIdealSize = Math.min(...idealFontSizes);
+      let fontSizes = idealFontSizes.map((fontSize) =>
+        Math.min(fontSize, smallestIdealSize * 1.15)
+      );
+
+      const estimatedHeight =
+        fontSizes.reduce((total, fontSize) => total + fontSize * 1.2, 0) +
+        lineGap * Math.max(0, lines.length - 1);
+      if (estimatedHeight > maximumNicknameHeight) {
+        const heightScale = maximumNicknameHeight / estimatedHeight;
+        fontSizes = fontSizes.map((fontSize) => fontSize * heightScale);
+      }
+
+      const utilizations = widthRatios.map(
+        (widthRatio, lineIndex) =>
+          (widthRatio * fontSizes[lineIndex]) / availableWidth
+      );
+      const minimumFontSize = Math.min(...fontSizes);
+      const minimumUtilization = Math.min(...utilizations);
+      const averageUtilization =
+        utilizations.reduce((total, utilization) => total + utilization, 0) /
+        utilizations.length;
+
+      candidates.push({
+        lines,
+        fontSizes,
+        minimumFontSize,
+        minimumUtilization,
+        score:
+          minimumFontSize +
+          averageUtilization * 8 -
+          Math.max(0, lines.length - 1) * 2,
+      });
+    }
+
+    const singleLine = candidates[0];
+    const bestWrapped = candidates
+      .slice(1)
+      .filter((candidate) => candidate.minimumUtilization >= 0.45)
+      .sort((left, right) => right.score - left.score)[0];
+    const shouldWrap =
+      bestWrapped !== undefined &&
+      singleLine.fontSizes[0] < maxFontSize * 0.9 &&
+      bestWrapped.minimumFontSize >= singleLine.minimumFontSize * 1.12 &&
+      bestWrapped.score > singleLine.score;
+    const chosen = shouldWrap ? bestWrapped : singleLine;
+    const lineByWord = new Array(measureWords.length).fill(0);
+    chosen.lines.forEach((line, lineIndex) => {
+      line.forEach((wordIndex) => {
+        lineByWord[wordIndex] = lineIndex;
+      });
+    });
+    const fontSize = Math.max(...chosen.fontSizes);
+
+    setNicknameLayout((current) => {
+      const sameLines =
+        current.lineByWord.length === lineByWord.length &&
+        current.lineByWord.every(
+          (lineIndex, wordIndex) => lineIndex === lineByWord[wordIndex]
+        );
+      const sameFontSizes =
+        current.lineFontSizes.length === chosen.fontSizes.length &&
+        current.lineFontSizes.every(
+          (currentSize, lineIndex) =>
+            Math.abs(currentSize - chosen.fontSizes[lineIndex]) < 0.1
+        );
+      if (
+        Math.abs(current.fontSize - fontSize) < 0.1 &&
+        sameLines &&
+        sameFontSizes
+      ) {
+        return current;
+      }
+      return {
+        fontSize,
+        lineByWord,
+        lineFontSizes: chosen.fontSizes,
+      };
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    let animationFrame = 0;
+    let cancelled = false;
+    const scheduleFit = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        if (!cancelled) fitNickname();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(scheduleFit);
+    if (headlineContentRef.current) {
+      resizeObserver.observe(headlineContentRef.current);
+    }
+    if (nicknameMeasureRef.current) {
+      resizeObserver.observe(nicknameMeasureRef.current);
+    }
+
+    scheduleFit();
+    document.fonts.ready.then(scheduleFit);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
+    };
+  }, [fitNickname, nickname]);
 
   useEffect(() => {
     if (copied) {
@@ -338,7 +527,7 @@ function App() {
   return (
     <div
       onClick={hasStarted ? generateNew : handleStart}
-      className="min-h-screen flex flex-col items-center p-6 sm:p-8 cursor-pointer select-none transition-colors"
+      className="app-shell cursor-pointer select-none transition-colors"
       style={{ backgroundColor: "#0D0A14" }}
     >
       {/* Audio element - always mounted */}
@@ -367,15 +556,15 @@ function App() {
 
       {/* Main content */}
       <div
-        className="flex-1 flex flex-col items-center justify-center w-full transition-opacity duration-1000"
+        className="headline-stage transition-opacity duration-1000"
         style={{
           opacity: hasStarted ? 1 : 0,
           pointerEvents: hasStarted ? "auto" : "none",
         }}
       >
-        <div className="text-center">
+        <div ref={headlineContentRef} className="headline-content">
           <p
-            className="base-statement text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-wide mb-4"
+            className="base-statement tracking-wide"
             style={{ color: "#8B7FA8" }}
           >
             Hi my little
@@ -392,9 +581,10 @@ function App() {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className={`nickname-wrapper text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-normal transition-all duration-200 max-w-full break-words ${isHovered ? "hovered" : ""} ${copied ? "copied" : ""}`}
+            className={`nickname-wrapper font-normal transition-all duration-200 ${isHovered ? "hovered" : ""} ${copied ? "copied" : ""}`}
             style={
               {
+                fontSize: `${nicknameLayout.fontSize}px`,
                 "--hover-gradient": `radial-gradient(circle at ${mousePos.percent}% 50%,
                   #F0E6FF 0%,
                   #D8A0FF 15%,
@@ -406,48 +596,75 @@ function App() {
           >
             <span className="nickname-words">
               {(() => {
-                const words = nickname.split(" ");
                 const maxWords = 4;
-                return Array.from({ length: maxWords }, (_, idx) => (
-                  <span
-                    key={idx}
-                    className="nickname-word"
-                    style={{
-                      display: idx < words.length ? "inline-flex" : "none",
-                    }}
-                  >
-                    <Ticker
-                      value={words[idx] || ""}
-                      duration={800}
-                      easing="easeOutCubic"
-                      characterLists={[Presets.ALPHABET + "áéíóúñü"]}
-                    />
-                    {idx < words.length - 1 && (
-                      <span className="nickname-space">&nbsp;</span>
-                    )}
-                  </span>
-                ));
+                return Array.from({ length: maxWords }, (_, idx) => {
+                  const lineIndex = nicknameLayout.lineByWord[idx] ?? 0;
+                  const previousLineIndex =
+                    nicknameLayout.lineByWord[idx - 1] ?? lineIndex;
+                  const startsNewLine =
+                    idx > 0 &&
+                    idx < nicknameWords.length &&
+                    lineIndex !== previousLineIndex;
+
+                  return (
+                    <Fragment key={idx}>
+                      {startsNewLine && (
+                        <span className="nickname-line-break" aria-hidden />
+                      )}
+                      <span
+                        className="nickname-word"
+                        style={{
+                          display:
+                            idx < nicknameWords.length ? "inline-flex" : "none",
+                          fontSize: `${nicknameLayout.lineFontSizes[lineIndex] ?? nicknameLayout.fontSize}px`,
+                        }}
+                      >
+                        <Ticker
+                          value={nicknameWords[idx] || ""}
+                          duration={800}
+                          easing="easeOutCubic"
+                          charWidth={0.88}
+                          characterLists={[Presets.ALPHABET + "áéíóúñü"]}
+                        />
+                      </span>
+                    </Fragment>
+                  );
+                });
               })()}
             </span>
           </div>
+          <p
+            className={`copied-message text-sm transition-opacity duration-300 ${
+              copied ? "opacity-100" : "opacity-0"
+            }`}
+            style={{ color: "#9A8CB8" }}
+          >
+            Copied to clipboard
+          </p>
         </div>
-        <p
-          className={`mt-8 text-sm transition-opacity duration-300 ${
-            copied ? "opacity-100" : "opacity-0"
-          }`}
-          style={{ color: "#9A8CB8" }}
-        >
-          Copied to clipboard
-        </p>
       </div>
+
+      <div ref={nicknameMeasureRef} className="nickname-measure" aria-hidden>
+        {nicknameWords.map((word) => (
+          <span key={word} className="nickname-measure-word">
+            <Ticker
+              value={word}
+              disableAnimation
+              charWidth={0.88}
+              characterLists={[Presets.ALPHABET + "áéíóúñü"]}
+            />
+          </span>
+        ))}
+      </div>
+
       <p
-        className="pb-6 text-xs text-center px-4 transition-opacity duration-1000"
+        className="app-footer text-xs text-center transition-opacity duration-1000"
         style={{
           color: "#3A2F52",
           opacity: hasStarted ? 1 : 0,
         }}
       >
-        tap to summon another, cara mia — tap the name to claim it
+        tap the name to claim it, cara mia. tap anywhere else to summon another.
       </p>
 
       {isFullscreen && (
@@ -562,7 +779,7 @@ function App() {
       )}
 
       <div
-        className="fixed top-10 right-10 md:top-12 md:right-12 transition-opacity duration-1000"
+        className="music-control fixed top-10 right-10 md:top-12 md:right-12 transition-opacity duration-1000"
         style={{
           opacity: hasStarted ? 1 : 0,
           pointerEvents: hasStarted ? "auto" : "none",

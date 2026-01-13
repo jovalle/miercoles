@@ -16,6 +16,31 @@
   display: inline;
 }
 
+.app-shell {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow: hidden;
+}
+
+.headline-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 4rem);
+}
+
+.headline-content {
+  position: relative;
+  display: grid;
+  width: min(100%, 68.75rem);
+  justify-items: center;
+  row-gap: clamp(0.75rem, 2.5vw, 1.5rem);
+  text-align: center;
+}
+
 .nickname-wrapper {
   --nickname-color: transparent;
   --nickname-gradient: radial-gradient(
@@ -25,16 +50,26 @@
     #9b4dca 60%,
     #5e2d79 100%
   );
-  max-width: 85vw;
+  width: 100%;
+  max-width: 100%;
   text-align: center;
 }
 
 .nickname-words {
   display: flex;
+  width: 100%;
   flex-wrap: wrap;
   justify-content: center;
   align-content: center;
-  gap: 0;
+  column-gap: 0.55em;
+  row-gap: 0;
+}
+
+.nickname-line-break {
+  flex-basis: 100%;
+  width: 0;
+  height: clamp(0.25rem, 1vh, 0.75rem);
+  pointer-events: none;
 }
 
 .nickname-word {
@@ -42,8 +77,36 @@
   white-space: nowrap;
 }
 
-.nickname-space {
-  display: inline;
+.nickname-measure {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  display: inline-flex;
+  column-gap: 0.55em;
+  visibility: hidden;
+  white-space: nowrap;
+  font-size: 100px;
+  pointer-events: none;
+}
+
+.nickname-measure-word {
+  display: inline-flex;
+}
+
+.copied-message {
+  position: absolute;
+  top: calc(100% + 1.5rem);
+  left: 50%;
+  width: max-content;
+  transform: translateX(-50%);
+}
+
+.app-footer {
+  position: fixed;
+  right: 0;
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
+  left: 0;
+  padding-inline: 1rem;
 }
 
 .music-button-wrapper {
@@ -149,8 +212,9 @@
   --nickname-gradient: none;
 }
 
-.nickname-wrapper .ticker,
-.nickname-wrapper .ticker * {
+.nickname-wrapper .ticker-char,
+.nickname-wrapper .ticker-prefix,
+.nickname-wrapper .ticker-suffix {
   background: var(--nickname-gradient) !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
@@ -158,8 +222,9 @@
   -webkit-text-fill-color: transparent !important;
 }
 
-.nickname-wrapper.copied .ticker,
-.nickname-wrapper.copied .ticker * {
+.nickname-wrapper.copied .ticker-char,
+.nickname-wrapper.copied .ticker-prefix,
+.nickname-wrapper.copied .ticker-suffix {
   -webkit-text-fill-color: #d8a0ff !important;
   background: none !important;
 }
@@ -168,4 +233,38 @@
   font-family: "Cormorant Garamond", serif;
   font-weight: 300;
   font-style: italic;
+  font-size: clamp(3rem, min(14vw, 22vh), 6rem);
+  line-height: 1;
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .music-control {
+    top: 0.75rem !important;
+    right: 0.75rem !important;
+  }
+
+  .music-button-wrapper,
+  .visualizer-svg {
+    width: 72px;
+    height: 72px;
+  }
+
+  .music-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .hold-progress-svg {
+    width: 46px;
+    height: 46px;
+  }
+
+  .music-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .app-footer {
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
 }
