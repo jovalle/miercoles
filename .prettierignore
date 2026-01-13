@@ -1,6 +1,7 @@
+.common
+*.min.css
+*.min.js
+bun.lock
 dist
 node_modules
-bun.lock
 package-lock.json
-*.min.js
-*.min.css

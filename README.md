@@ -25,17 +25,17 @@ Turns out, "Hi my little nightmare" hits different when you're addressing an 8-p
 ## Development
 
 ```bash
-# Install dependencies
-bun install
+# List available commands
+just
 
-# Start development server
-bun run dev
+# Install locked dependencies and set up git hooks
+just setup
 
-# Build for production
-bun run build
+# Start the development server
+just dev
 
-# Preview production build
-bun run preview
+# Run the full local release gate
+just check
 ```
 
 ## Roadmap
